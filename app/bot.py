@@ -246,6 +246,7 @@ async def capture_query_handler(message: Message, state: FSMContext):
             result_count=result["total"],
             export_price_cents=export_price_cents,
             query=query,
+            search_type=data.get("search_type", "keyword"),
         )
 
         log_search(
@@ -270,7 +271,7 @@ async def capture_query_handler(message: Message, state: FSMContext):
             parse_mode="HTML",
         )
 
-        await state.clear()
+        await state.set_state(None)
 
     except Exception:
         logging.exception(
@@ -302,7 +303,6 @@ async def _run_export(callback: CallbackQuery, state: FSMContext, file_kind: str
 
     if not query:
         await callback.message.answer("Missing search data. Please search again.")
-        await state.clear()
         await callback.answer()
         return
 
@@ -362,7 +362,6 @@ async def _run_export(callback: CallbackQuery, state: FSMContext, file_kind: str
             temp_path = tmp.name
 
         log_search(db, user.telegram_id, search_type, query, total, 0, wallet_used)
-        await state.clear()
 
         await callback.message.answer_document(
             FSInputFile(temp_path, filename=filename),
