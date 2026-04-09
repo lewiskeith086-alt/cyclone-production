@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: cyclone-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python start_api.py
+    autoDeploy: true
+  - type: worker
+    name: cyclone-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python start_bot.py
+    autoDeploy: true

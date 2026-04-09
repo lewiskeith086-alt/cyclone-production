@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ bot_name }} Uploader</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><div class="page"><div class="card"><h1>{{ bot_name }}</h1><p class="sub">Upload files, process them into the database, and discard source files after processing.</p>
+<form id="uploadForm" action="/ui/upload" method="post" enctype="multipart/form-data">
+<label>Dataset group name</label><input type="text" name="dataset_name" required placeholder="e.g. March Batch Upload">
+<label>Telegram ID (optional)</label><input type="text" name="uploaded_by_telegram_id" placeholder="e.g. 544182594">
+<label>Files</label><div id="dropzone" class="dropzone"><input id="fileInput" type="file" name="files" multiple required><div class="drop-inner"><div class="icon">⬆</div><div class="title">Drop files here or click to browse</div><div class="hint">TXT / CSV / plain line-based input</div><div id="fileName" class="filename"></div></div></div>
+<button id="submitBtn" type="submit">Upload files</button><div id="uploadStatus" class="upload-status"></div></form>
+{% if message %}<div class="result ok"><p>{{ message }}</p></div>{% endif %}
+{% if error %}<div class="result bad"><h3>Upload failed</h3><p>{{ error }}</p></div>{% endif %}
+{% if results %}<div class="table-wrap"><table><thead><tr><th>Filename</th><th>Inserted</th><th>Skipped</th><th>Dataset ID</th></tr></thead><tbody>{% for item in results %}<tr><td>{{ item.file }}</td><td>{{ item.rows_inserted }}</td><td>{{ item.rows_skipped }}</td><td>{{ item.dataset_id }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+<p class="footer">Admin contact: {{ admin_contact }}</p></div></div><script src="/static/upload.js"></script></body></html>
