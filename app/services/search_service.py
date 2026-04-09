@@ -13,26 +13,6 @@ def normalize_query(value: str) -> str:
     return value.strip().lower()
 
 
-def mask_email(email: str | None) -> str:
-    if not email or "@" not in email:
-        return "-"
-    name, domain = email.split("@", 1)
-    if len(name) <= 2:
-        masked = name[0] + "*"
-    else:
-        masked = name[:1] + "*" * max(1, len(name) - 2) + name[-1]
-    return f"{masked}@{domain}"
-
-
-def mask_phone(phone: str | None) -> str:
-    if not phone:
-        return "-"
-    digits = str(phone)
-    if len(digits) <= 4:
-        return "*" * len(digits)
-    return "*" * (len(digits) - 4) + digits[-4:]
-
-
 def _contains(expr, q: str):
     return func.lower(func.coalesce(expr, "")).like(f"%{q}%")
 
@@ -91,82 +71,58 @@ def fetch_export_records(db: Session, search_type: str, query: str):
     return _build_query(db, search_type, query).limit(EXPORT_FETCH_LIMIT).all()
 
 
-def summarize_records(records):
-    counts = {"domains": 0, "emails": 0, "usernames": 0, "phones": 0, "urls": 0, "companies": 0}
-    for r in records:
-        if r.domain:
-            counts["domains"] += 1
-        if r.email:
-            counts["emails"] += 1
-        if r.username:
-            counts["usernames"] += 1
-        if r.phone:
-            counts["phones"] += 1
-        if r.url:
-            counts["urls"] += 1
-        if r.company:
-            counts["companies"] += 1
-    return counts
+def _record_full_line(record: Record) -> str:
+    if record.notes and record.notes.strip():
+        return record.notes.strip()
+    for value in [record.url, record.email, record.domain, record.username, record.phone, record.company]:
+        if value and str(value).strip():
+            return str(value).strip()
+    return ""
 
 
 def build_safe_txt_report(query: str, search_type: str, total: int, records):
-    counts = summarize_records(records)
-    lines = [
-        "==============================",
-        "CYCLONE ULP SEARCHER REPORT",
-        "==============================",
-        "",
-        "[SEARCH]",
-        f"query={query}",
-        f"filter={search_type}",
-        f"result_count={total}",
-        "",
-        "[CATEGORY_COUNTS]",
-        f"domains={counts['domains']}",
-        f"emails={counts['emails']}",
-        f"usernames={counts['usernames']}",
-        f"phones={counts['phones']}",
-        f"urls={counts['urls']}",
-        f"companies={counts['companies']}",
-        "",
-        "[MASKED_ROWS]",
-        "",
-    ]
-    for i, r in enumerate(records, start=1):
-        lines += [
-            f"# row_{i}",
-            f"domain={r.domain or '-'}",
-            f"email={mask_email(r.email)}",
-            f"username={r.username or '-'}",
-            f"phone={mask_phone(r.phone)}",
-            f"url={r.url or '-'}",
-            f"company={r.company or '-'}",
-            f"country={r.country or '-'}",
-            f"source={r.source_name or 'upload'}",
-            "",
-        ]
+    lines = []
+    seen = set()
+
+    for record in records:
+        line = _record_full_line(record)
+        if not line:
+            continue
+        if line in seen:
+            continue
+        seen.add(line)
+        lines.append(line)
+
     return "\n".join(lines)
 
 
 def build_safe_csv(records):
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["domain", "email_masked", "username", "phone_masked", "company", "country", "url", "source"])
-    for r in records:
-        writer.writerow([
-            r.domain or "",
-            mask_email(r.email),
-            r.username or "",
-            mask_phone(r.phone),
-            r.company or "",
-            r.country or "",
-            r.url or "",
-            r.source_name or "upload",
-        ])
+    writer.writerow(["full_line"])
+
+    seen = set()
+    for record in records:
+        line = _record_full_line(record)
+        if not line:
+            continue
+        if line in seen:
+            continue
+        seen.add(line)
+        writer.writerow([line])
+
     return out.getvalue()
 
 
-def log_search(db: Session, telegram_id: int, search_type: str, query: str, results_count: int, credits_used: int = 0, wallet_cents_used: int = 0):
+def log_search(
+    db: Session,
+    telegram_id: int,
+    search_type: str,
+    query: str,
+    results_count: int,
+    credits_used: int = 0,
+    wallet_cents_used: int = 0,
+):
     db.add(
         SearchLog(
             telegram_id=telegram_id,
