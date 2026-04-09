@@ -1,5 +1,7 @@
 from datetime import datetime
 import io
+import re
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse
@@ -17,27 +19,54 @@ app = FastAPI(title="CYCLONE ULP SEARCHER API")
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+EMAIL_RE = re.compile(r"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$", re.I)
+
 
 @app.on_event("startup")
 def startup():
     init_db()
 
 
+def _truncate(value: str | None, limit: int) -> str | None:
+    if value is None:
+        return None
+    value = str(value).strip()
+    if not value:
+        return None
+    return value[:limit]
+
+
 def _detect_domain(value: str) -> str | None:
     value = value.strip()
 
-    if "@" in value:
-        return value.split("@", 1)[1].lower()
-
-    if "://" in value:
+    if value.startswith(("http://", "https://")):
         try:
-            return value.split("://", 1)[1].split("/", 1)[0].lower()
+            parsed = urlparse(value)
+            host = (parsed.hostname or "").strip().lower()
+            return _truncate(host, 255)
         except Exception:
             return None
 
-    if "." in value and " " not in value:
-        return value.lower()
+    if EMAIL_RE.match(value):
+        return _truncate(value.split("@", 1)[1].lower(), 255)
 
+    if "." in value and " " not in value and "/" not in value and ":" not in value:
+        return _truncate(value.lower(), 255)
+
+    return None
+
+
+def _extract_email(value: str) -> str | None:
+    value = value.strip()
+    if EMAIL_RE.match(value):
+        return _truncate(value.lower(), 255)
+    return None
+
+
+def _extract_url(value: str) -> str | None:
+    value = value.strip()
+    if value.startswith(("http://", "https://")):
+        return value
     return None
 
 
@@ -49,12 +78,12 @@ def _parse_line_to_record(line: str) -> dict | None:
     return {
         "record_type": "generic",
         "domain": _detect_domain(line),
-        "email": line if "@" in line and " " not in line else None,
+        "email": _extract_email(line),
         "username": None,
         "phone": None,
         "company": None,
         "country": None,
-        "url": line if line.startswith("http://") or line.startswith("https://") else None,
+        "url": _extract_url(line),
         "notes": line,
     }
 

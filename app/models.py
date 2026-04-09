@@ -3,6 +3,7 @@ from sqlalchemy import String, BigInteger, DateTime, Boolean, ForeignKey, Text, 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -17,6 +18,7 @@ class User(Base):
     referred_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
 class Dataset(Base):
     __tablename__ = "datasets"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -29,6 +31,7 @@ class Dataset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     records: Mapped[list["Record"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
 
+
 class Record(Base):
     __tablename__ = "records"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -40,12 +43,16 @@ class Record(Base):
     phone: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
     company: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
     country: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
-    url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_type: Mapped[str | None] = mapped_column(String(50), nullable=True, default="upload")
+    assigned_to_telegram_id: Mapped[int | None] = mapped_column(BigInteger, index=True, nullable=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    assignment_batch_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     dataset: Mapped["Dataset"] = relationship(back_populates="records")
+
 
 Index("ix_records_domain_lower", Record.domain)
 Index("ix_records_email_lower", Record.email)
@@ -53,6 +60,9 @@ Index("ix_records_username_lower", Record.username)
 Index("ix_records_phone", Record.phone)
 Index("ix_records_company_lower", Record.company)
 Index("ix_records_country_lower", Record.country)
+Index("ix_records_assigned_to", Record.assigned_to_telegram_id)
+Index("ix_records_assignment_batch", Record.assignment_batch_id)
+
 
 class SearchLog(Base):
     __tablename__ = "search_logs"
@@ -65,6 +75,7 @@ class SearchLog(Base):
     wallet_cents_used: Mapped[int] = mapped_column(BigInteger, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
 class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -73,6 +84,7 @@ class WalletTransaction(Base):
     kind: Mapped[str] = mapped_column(String(50), index=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 
 class CryptoInvoice(Base):
     __tablename__ = "crypto_invoices"
