@@ -27,17 +27,23 @@ def startup():
     init_db()
 
 
-def _truncate(value: str | None, limit: int) -> str | None:
+def _clean_text(value: str | None) -> str | None:
     if value is None:
         return None
-    value = str(value).strip()
-    if not value:
+    return str(value).replace("\x00", "").strip() or None
+
+
+def _truncate(value: str | None, limit: int) -> str | None:
+    value = _clean_text(value)
+    if value is None:
         return None
     return value[:limit]
 
 
 def _detect_domain(value: str) -> str | None:
-    value = value.strip()
+    value = _clean_text(value)
+    if not value:
+        return None
 
     if value.startswith(("http://", "https://")):
         try:
@@ -57,21 +63,21 @@ def _detect_domain(value: str) -> str | None:
 
 
 def _extract_email(value: str) -> str | None:
-    value = value.strip()
-    if EMAIL_RE.match(value):
+    value = _clean_text(value)
+    if value and EMAIL_RE.match(value):
         return _truncate(value.lower(), 255)
     return None
 
 
 def _extract_url(value: str) -> str | None:
-    value = value.strip()
-    if value.startswith(("http://", "https://")):
+    value = _clean_text(value)
+    if value and value.startswith(("http://", "https://")):
         return value
     return None
 
 
 def _parse_line_to_record(line: str) -> dict | None:
-    line = line.strip()
+    line = _clean_text(line)
     if not line:
         return None
 
@@ -139,7 +145,7 @@ async def ui_upload(
 
         for up in files:
             dataset = Dataset(
-                name=up.filename if len(files) == 1 else f"{dataset_name} - {up.filename}",
+                name=_truncate(up.filename if len(files) == 1 else f"{dataset_name} - {up.filename}", 255) or "upload",
                 source_type="upload",
                 uploaded_by_telegram_id=uploader_id,
                 record_count=0,
@@ -179,7 +185,7 @@ async def ui_upload(
                         country=parsed["country"],
                         url=parsed["url"],
                         notes=parsed["notes"],
-                        source_name=up.filename,
+                        source_name=_truncate(up.filename, 255),
                         source_type="upload",
                     )
                 )
