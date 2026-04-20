@@ -11,7 +11,6 @@ from fastapi.staticfiles import StaticFiles
 from .config import BOT_NAME, ADMIN_CONTACT
 from .db import get_session
 from .models import Dataset, Record, CryptoInvoice, User, WalletTransaction
-from .services.cryptomus_service import verify_webhook_signature
 from .init_db import init_db
 
 app = FastAPI(title="CYCLONE ULP SEARCHER API")
@@ -243,56 +242,6 @@ async def ui_upload(
             },
             status_code=500,
         )
-
-    finally:
-        db.close()
-
-
-@app.post("/payments/cryptomus/webhook")
-async def cryptomus_webhook(request: Request):
-    payload = await request.json()
-
-    if not verify_webhook_signature(payload):
-        raise HTTPException(status_code=401, detail="Invalid webhook signature")
-
-    invoice_uuid = payload.get("uuid")
-    order_id = payload.get("order_id")
-    status = (payload.get("status") or "").lower()
-
-    db = get_session()
-
-    try:
-        q = db.query(CryptoInvoice)
-
-        invoice = (
-            q.filter(CryptoInvoice.invoice_uuid == invoice_uuid).first()
-            if invoice_uuid
-            else q.filter(CryptoInvoice.order_id == order_id).first()
-        )
-
-        if not invoice:
-            return {"ok": True, "ignored": "invoice_not_found"}
-
-        invoice.status = status or invoice.status
-
-        if status in {"paid", "paid_over"} and invoice.credited_at is None:
-            user = db.query(User).filter(User.telegram_id == invoice.telegram_id).first()
-
-            if user:
-                user.wallet_balance_cents += invoice.amount_usd_cents
-                invoice.credited_at = datetime.utcnow()
-
-                db.add(
-                    WalletTransaction(
-                        telegram_id=user.telegram_id,
-                        amount_cents=invoice.amount_usd_cents,
-                        kind="cryptomus_topup",
-                        note=f"Top-up via {invoice.coin} / order {invoice.order_id}",
-                    )
-                )
-
-        db.commit()
-        return {"ok": True}
 
     finally:
         db.close()
