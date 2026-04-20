@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 import tempfile
+import io
+import qrcode
 
 from decimal import Decimal, InvalidOperation
 
@@ -10,6 +12,7 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, Message
 from sqlalchemy import func
+from aiogram.types import CallbackQuery, FSInputFile, Message, BufferedInputFile
 
 from .config import BOT_NAME, BOT_TOKEN, ADMIN_CONTACT, UNLIMITED_PLAN_CENTS
 from .db import get_session
@@ -63,6 +66,34 @@ from .states import (
     PaymentTopUpStates,
     SearchStates,
 )
+
+def _format_utc(dt_obj):
+    if not dt_obj:
+        return "-"
+    return dt_obj.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _build_payment_uri(invoice):
+    if invoice.asset == "BTC":
+        return f"bitcoin:{invoice.wallet_address}?amount={invoice.amount_crypto}"
+    return invoice.wallet_address
+
+
+def _build_qr_bytes(payload: str) -> io.BytesIO:
+    qr = qrcode.QRCode(
+        version=None,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(payload)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    output = io.BytesIO()
+    img.save(output, format="PNG")
+    output.seek(0)
+    output.name = "invoice_qr.png"
+    return output
 
 logging.basicConfig(level=logging.INFO)
 
@@ -456,11 +487,21 @@ async def payment_amount_handler(message: Message, state: FSMContext):
 
     data = await state.get_data()
     asset = data.get("asset", "BTC")
+
     db = get_session()
     try:
-        user, _ = get_or_create_user(db, message.from_user.id, message.from_user.username, message.from_user.full_name)
+        user, _ = get_or_create_user(
+            db,
+            message.from_user.id,
+            message.from_user.username,
+            message.from_user.full_name,
+        )
+
         invoice = create_payment_invoice(db, user.telegram_id, asset, usd_cents)
-        await message.answer(
+        payment_uri = _build_payment_uri(invoice)
+        qr_file = _build_qr_bytes(payment_uri)
+
+        caption = (
             "🧾 <b>Invoice Created</b>\n\n"
             f"Invoice ID: <code>{invoice.invoice_id}</code>\n"
             f"Asset: <b>{invoice.asset}</b>\n"
@@ -468,14 +509,20 @@ async def payment_amount_handler(message: Message, state: FSMContext):
             f"USD Amount: <b>${invoice.amount_usd_cents / 100:.2f}</b>\n"
             f"Send Exact Amount: <b>{invoice.amount_crypto} {invoice.asset}</b>\n"
             f"Wallet Address:\n<code>{invoice.wallet_address}</code>\n\n"
-            f"Expires At (UTC): <b>{invoice.expires_at}</b>\n\n"
+            f"Expires At (UTC): <b>{_format_utc(invoice.expires_at)}</b>\n\n"
             "After payment, the system will detect and credit automatically.\n"
-            "Use <b>🧾 Invoice Status</b> anytime to check payment progress.",
+            "Use <b>🧾 Invoice Status</b> anytime to check payment progress."
+        )
+
+        await message.answer_photo(
+            photo=BufferedInputFile(qr_file.getvalue(), filename="invoice_qr.png"),
+            caption=caption,
             parse_mode="HTML",
         )
-    except Exception:
+
+    except Exception as e:
         logging.exception("Invoice creation failed for telegram_id=%s", message.from_user.id)
-        await message.answer("❌ Could not create invoice right now.")
+        await message.answer(f"❌ Could not create invoice right now.\n\n{e}")
     finally:
         db.close()
         await state.clear()
@@ -497,8 +544,8 @@ async def invoice_status_handler(message: Message, state: FSMContext):
             await message.answer("No invoices found.")
             return
 
-        paid_at = invoice.paid_at.strftime("%Y-%m-%d %H:%M:%S UTC") if invoice.paid_at else "-"
-        expires_at = invoice.expires_at.strftime("%Y-%m-%d %H:%M:%S UTC") if invoice.expires_at else "-"
+        paid_at = _format_utc(invoice.paid_at) if invoice.paid_at else "-"
+        expires_at = _format_utc(invoice.expires_at) if invoice.expires_at else "-"
 
         await message.answer(
             "🧾 <b>Latest Invoice</b>\n\n"
@@ -870,7 +917,6 @@ async def info_handler(message: Message, state: FSMContext):
 
 
 async def main():
-    init_db()
     bot = Bot(BOT_TOKEN)
     dp = Dispatcher()
     dp.include_router(router)

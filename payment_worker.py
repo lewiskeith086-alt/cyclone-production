@@ -75,7 +75,6 @@ async def process_pending_invoices(bot: Bot):
 
 
 async def main():
-    init_db()
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN is missing for payment worker notifications")
 
