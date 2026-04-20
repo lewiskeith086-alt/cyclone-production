@@ -105,3 +105,36 @@ class CryptoInvoice(Base):
     credited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PaymentInvoice(Base):
+    __tablename__ = "payment_invoices"
+    id = mapped_column(BigInteger, primary_key=True)
+    invoice_id = mapped_column(String(64), unique=True, index=True)
+    telegram_id = mapped_column(BigInteger, index=True)
+    asset = mapped_column(String(16), index=True)
+    network = mapped_column(String(32), index=True)
+    amount_usd_cents = mapped_column(BigInteger)
+    amount_crypto = mapped_column(String(64))
+    wallet_address = mapped_column(String(255))
+    status = mapped_column(String(32), default="pending", index=True)
+    tx_hash = mapped_column(String(255), nullable=True, index=True)
+    confirmations = mapped_column(BigInteger, default=0)
+    created_at = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at = mapped_column(DateTime, index=True)
+    paid_at = mapped_column(DateTime, nullable=True)
+
+class PaymentTransaction(Base):
+    __tablename__ = "payment_transactions"
+    id = mapped_column(BigInteger, primary_key=True)
+    telegram_id = mapped_column(BigInteger, index=True)
+    invoice_id = mapped_column(String(64), index=True)
+    asset = mapped_column(String(16), index=True)
+    network = mapped_column(String(32), index=True)
+    wallet_address = mapped_column(String(255))
+    tx_hash = mapped_column(String(255), unique=True, index=True)
+    amount_crypto = mapped_column(String(64))
+    confirmations = mapped_column(BigInteger, default=0)
+    credited_amount_usd_cents = mapped_column(BigInteger, default=0)
+    created_at = mapped_column(DateTime, default=datetime.utcnow)
+
